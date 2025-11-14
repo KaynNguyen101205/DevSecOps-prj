@@ -1,3 +1,24 @@
+terraform {
+  required_providers {
+    docker = {
+      source  = "kreuzwerker/docker"
+      version = ">= 3.0.2"
+    }
+    local = {
+      source  = "hashicorp/local"
+      version = ">= 2.4.0"
+    }
+    tls = {
+      source  = "hashicorp/tls"
+      version = ">= 4.0.5"
+    }
+    null = {
+      source  = "hashicorp/null"
+      version = ">= 3.2.0"
+    }
+  }
+}
+
 locals {
   data_dir = var.data_dir != "" ? var.data_dir : abspath("${path.root}/generated/registry/data")
   auth_dir = var.auth_dir != "" ? var.auth_dir : abspath("${path.root}/generated/registry/auth")

@@ -1,19 +1,30 @@
+terraform {
+  required_providers {
+    kind = {
+      source  = "tehcyx/kind"
+      version = ">= 0.5.0"
+    }
+    null = {
+      source  = "hashicorp/null"
+      version = ">= 3.2.0"
+    }
+    local = {
+      source  = "hashicorp/local"
+      version = ">= 2.4.0"
+    }
+  }
+}
+
 locals {
   kubeconfig_path        = var.kubeconfig_path != "" ? var.kubeconfig_path : abspath("${path.root}/kubeconfig")
   containerd_certs_dir   = "/etc/containerd/certs.d/${var.registry_alias}:5000"
 }
 
 resource "kind_cluster" "this" {
-  name       = var.cluster_name
-  node_image = var.node_image
-  wait_for_ready = true
-  log_level  = "info"
-  network    = var.network_name
-
-  kubeconfig {
-    path    = local.kubeconfig_path
-    context = var.cluster_name
-  }
+  name            = var.cluster_name
+  node_image      = var.node_image
+  wait_for_ready  = true
+  kubeconfig_path = local.kubeconfig_path
 
   kind_config {
     kind        = "Cluster"
@@ -25,7 +36,7 @@ resource "kind_cluster" "this" {
       service_subnet      = "10.96.0.0/12"
     }
 
-    nodes {
+    node {
       role = "control-plane"
 
       extra_port_mappings {
@@ -42,7 +53,7 @@ resource "kind_cluster" "this" {
       }
     }
 
-    dynamic "nodes" {
+    dynamic "node" {
       for_each = var.worker_count > 0 ? range(var.worker_count) : []
 
       content {
