@@ -1,0 +1,55 @@
+- name: Ensure observability namespace exists
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ observability_namespace }}"
+        labels:
+          pod-security.kubernetes.io/enforce: baseline
+  kubeconfig: "{{ kubeconfig_path }}"
+  tags: ["observability"]
+
+- name: Add Prometheus community Helm repo
+  kubernetes.core.helm_repository:
+    name: prometheus-community
+    repo_url: https://prometheus-community.github.io/helm-charts
+  environment: "{{ helm_environment | default({}) }}"
+  tags: ["observability"]
+
+- name: Add Grafana Helm repo
+  kubernetes.core.helm_repository:
+    name: grafana
+    repo_url: https://grafana.github.io/helm-charts
+  environment: "{{ helm_environment | default({}) }}"
+  tags: ["observability"]
+
+- name: Deploy kube-prometheus-stack
+  kubernetes.core.helm:
+    name: "{{ prometheus_release_name }}"
+    chart_ref: prometheus-community/kube-prometheus-stack
+    release_namespace: "{{ observability_namespace }}"
+    create_namespace: false
+    kubeconfig: "{{ kubeconfig_path }}"
+    values: "{{ lookup('template', 'prometheus-values.yaml.j2') | from_yaml }}"
+    wait: true
+    timeout: 900
+    version: "{{ prometheus_chart_version | default(omit) }}"
+  environment: "{{ helm_environment | default({}) }}"
+  tags: ["observability"]
+
+- name: Deploy Loki stack
+  kubernetes.core.helm:
+    name: "{{ loki_release_name }}"
+    chart_ref: grafana/loki-stack
+    release_namespace: "{{ observability_namespace }}"
+    create_namespace: false
+    kubeconfig: "{{ kubeconfig_path }}"
+    values: "{{ lookup('template', 'loki-values.yaml.j2') | from_yaml }}"
+    wait: true
+    timeout: 600
+    version: "{{ loki_chart_version | default(omit) }}"
+  environment: "{{ helm_environment | default({}) }}"
+  tags: ["observability"]
+

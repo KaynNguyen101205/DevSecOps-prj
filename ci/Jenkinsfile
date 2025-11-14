@@ -1,0 +1,298 @@
+#!/usr/bin/env groovy
+pipeline {
+  agent any
+
+  tools {
+    jdk 'jdk17'
+    nodejs 'node16'
+  }
+
+  environment {
+    REGISTRY = credentials('registry-creds')
+    ANSIBLE_VAULT_PASS = credentials('ansible-vault-password')
+    TMDB_V3_API_KEY = credentials('tmdb-api-key')
+    REGISTRY_URL = 'localhost:5001'
+    IMAGE_NAME = 'devsecops/netflix'
+    IMAGE_TAG = "${env.BUILD_NUMBER}"
+    TRIVY_CACHE_DIR = "${WORKSPACE}/.trivy-cache"
+  }
+
+  options {
+    skipDefaultCheckout(true)
+    timestamps()
+    ansiColor('xterm')
+    disableConcurrentBuilds()
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Workspace Prep') {
+      steps {
+        sh '''
+          set -euo pipefail
+          mkdir -p reports/dependency-check reports/trivy reports/zap
+          mkdir -p ${TRIVY_CACHE_DIR}
+        '''
+        writeFile file: 'vault.pass', text: "${ANSIBLE_VAULT_PASS}"
+        withCredentials([
+          file(credentialsId: 'kubeconfig-local', variable: 'KUBECONFIG_FILE')
+        ]) {
+          sh '''
+            mkdir -p .kube
+            cp "${KUBECONFIG_FILE}" ./.kube/config
+            chmod 600 ./.kube/config
+          '''
+        }
+      }
+    }
+
+    stage('Install App Dependencies') {
+      steps {
+        script {
+          if (fileExists('package.json')) {
+            sh '''
+              set -e
+              npm ci
+            '''
+          } else if (fileExists('pom.xml')) {
+            sh '''
+              set -e
+              mvn -B -DskipTests clean package
+            '''
+          } else {
+            echo 'No Node.js or Maven project found, skipping dependency install.'
+          }
+        }
+      }
+    }
+
+    stage('Unit Tests') {
+      steps {
+        script {
+          if (fileExists('package.json')) {
+            sh '''
+              set -e
+              npm test
+            '''
+          } else if (fileExists('pom.xml')) {
+            sh '''
+              set -e
+              mvn -B test
+            '''
+          } else {
+            echo 'No known test runner found, skipping tests.'
+          }
+        }
+      }
+      post {
+        always {
+          junit allowEmptyResults: true, testResults: '**/target/surefire-reports/*.xml'
+        }
+      }
+    }
+
+    stage('Dependency Scan (OWASP)') {
+      when {
+        expression { fileExists('package-lock.json') || fileExists('pom.xml') }
+      }
+      steps {
+        dependencyCheck additionalArguments: '--scan . --format XML --prettyPrint --out reports/dependency-check', odcInstallation: 'DP-Check'
+        dependencyCheckPublisher pattern: 'reports/dependency-check/dependency-check-report.xml'
+      }
+    }
+
+    stage('Trivy Filesystem Scan') {
+      steps {
+        sh '''
+          set +e
+          trivy fs --cache-dir ${TRIVY_CACHE_DIR} --exit-code 1 --severity HIGH,CRITICAL --skip-dirs .git --skip-dirs .terraform .
+          EXIT_CODE=$?
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "Trivy filesystem scan found serious issues."
+            exit $EXIT_CODE
+          fi
+        '''
+      }
+    }
+
+    stage('SonarQube Analysis') {
+      when {
+        expression { fileExists('sonar-project.properties') }
+      }
+      steps {
+        withCredentials([
+          string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')
+        ]) {
+          withSonarQubeEnv('sonarqube') {
+            sh '''
+              set -e
+              sonar-scanner \
+                -Dsonar.login=${SONAR_TOKEN} \
+                -Dsonar.projectKey=devsecops-netflix \
+                -Dsonar.sources=.
+            '''
+          }
+        }
+      }
+    }
+
+    stage('Sonar Quality Gate') {
+      when {
+        expression { fileExists('sonar-project.properties') }
+      }
+      steps {
+        waitForQualityGate abortPipeline: true
+      }
+    }
+
+    stage('Build & Push Image') {
+      when {
+        expression { fileExists('Dockerfile') }
+      }
+      steps {
+        script {
+          def registryImage = "${REGISTRY_URL}/${IMAGE_NAME}:${IMAGE_TAG}"
+          echo "Building image ${registryImage}"
+          docker.withRegistry("https://${REGISTRY_URL}", 'registry-creds') {
+            def appImage = docker.build("${IMAGE_NAME}", "--build-arg TMDB_V3_API_KEY=${env.TMDB_V3_API_KEY ?: ''} .")
+            appImage.push("${IMAGE_TAG}")
+            appImage.push("latest")
+          }
+          env.REGISTRY_IMAGE = registryImage
+        }
+      }
+    }
+
+    stage('Trivy Image Scan') {
+      when {
+        expression { env.REGISTRY_IMAGE }
+      }
+      steps {
+        sh '''
+          set -e
+          trivy image --cache-dir ${TRIVY_CACHE_DIR} --exit-code 1 --severity HIGH,CRITICAL "${REGISTRY_IMAGE}"
+        '''
+      }
+      post {
+        always {
+          sh '''
+            trivy image --cache-dir ${TRIVY_CACHE_DIR} --format template --template "@contrib/html.tpl" -o reports/trivy/image-report.html "${REGISTRY_IMAGE}" || true
+          '''
+          archiveArtifacts artifacts: 'reports/trivy/image-report.html', allowEmptyArchive: true
+        }
+      }
+    }
+
+    stage('Terraform Plan') {
+      steps {
+        dir('infra/terraform') {
+          sh '''
+            set -e
+            terraform init -input=false
+            terraform fmt -check
+            terraform validate
+            terraform plan -input=false -out=tfplan
+            mkdir -p ../reports/terraform
+            terraform show -json tfplan > ../reports/terraform/tfplan.json
+          '''
+        }
+        stash name: 'tfplan', includes: 'infra/terraform/tfplan'
+        archiveArtifacts artifacts: 'reports/terraform/tfplan.json', allowEmptyArchive: true
+      }
+    }
+
+    stage('Terraform Apply') {
+      steps {
+        script {
+          input message: 'Apply Terraform changes?', ok: 'Apply'
+        }
+        unstash 'tfplan'
+        dir('infra/terraform') {
+          sh '''
+            set -e
+            terraform apply -input=false tfplan
+          '''
+        }
+      }
+    }
+
+    stage('Ansible Deploy') {
+      steps {
+        withCredentials([
+          file(credentialsId: 'kubeconfig-local', variable: 'KUBECONFIG_FILE')
+        ]) {
+          sh '''
+            set -e
+            export KUBECONFIG="${KUBECONFIG_FILE}"
+            cd config/ansible
+            ansible-playbook playbooks/site.yml --vault-password-file "${WORKSPACE}/vault.pass" --tags jenkins,sonarqube,observability,argocd
+          '''
+        }
+      }
+    }
+
+    stage('Verify GitOps Deploy') {
+      steps {
+        withCredentials([
+          file(credentialsId: 'kubeconfig-local', variable: 'KUBECONFIG_FILE')
+        ]) {
+          sh '''
+            set -e
+            export KUBECONFIG="${KUBECONFIG_FILE}"
+            kubectl rollout status deployment/netflix -n netflix --timeout=120s
+            kubectl get svc netflix -n netflix
+          '''
+        }
+      }
+    }
+
+    stage('OWASP ZAP Baseline') {
+      steps {
+        sh '''
+          set +e
+          docker run --rm \
+            -v "${WORKSPACE}/reports/zap:/zap/wrk" \
+            owasp/zap2docker-stable \
+            zap-baseline.py -t http://localhost:30007 -x zap-report.xml -I
+          EXIT_CODE=$?
+          if [ $EXIT_CODE -gt 1 ]; then
+            exit $EXIT_CODE
+          fi
+        '''
+      }
+      post {
+        always {
+          archiveArtifacts artifacts: 'reports/zap/zap-report.xml', allowEmptyArchive: true
+        }
+      }
+    }
+
+    stage('Policy as Code') {
+      steps {
+        sh '''
+          set -e
+          conftest test reports/terraform/tfplan.json --policy policy
+        '''
+      }
+    }
+  }
+
+  post {
+    always {
+      cleanWs deleteDirs: true, notFailBuild: true
+      sh 'rm -f vault.pass || true'
+    }
+    failure {
+      echo 'Pipeline failed. Check reports and console log for details.'
+    }
+    success {
+      echo 'Pipeline finished with all security gates green.'
+    }
+  }
+}
+

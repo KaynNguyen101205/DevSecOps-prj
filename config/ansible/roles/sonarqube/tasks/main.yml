@@ -1,0 +1,34 @@
+- name: Ensure SonarQube namespace exists
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ sonarqube_namespace }}"
+        labels:
+          pod-security.kubernetes.io/enforce: baseline
+  kubeconfig: "{{ kubeconfig_path }}"
+  tags: ["sonarqube"]
+
+- name: Add SonarQube Helm repository
+  kubernetes.core.helm_repository:
+    name: sonarqube
+    repo_url: https://SonarSource.github.io/helm-chart-sonarqube
+  environment: "{{ helm_environment | default({}) }}"
+  tags: ["sonarqube"]
+
+- name: Deploy SonarQube
+  kubernetes.core.helm:
+    name: "{{ sonarqube_release_name }}"
+    chart_ref: sonarqube/sonarqube
+    release_namespace: "{{ sonarqube_namespace }}"
+    create_namespace: false
+    kubeconfig: "{{ kubeconfig_path }}"
+    values: "{{ lookup('template', 'values.yaml.j2') | from_yaml }}"
+    wait: true
+    timeout: 900
+    version: "{{ sonarqube_chart_version | default(omit) }}"
+  environment: "{{ helm_environment | default({}) }}"
+  tags: ["sonarqube"]
+

@@ -1,0 +1,29 @@
+server:
+  service:
+    type: NodePort
+    nodePort: {{ argocd_server_node_port }}
+  ingress:
+    enabled: false
+  extraArgs:
+    - --insecure
+
+configs:
+  params:
+    server.insecure: "true"
+  cm:
+    timeout.reconciliation: "30s"
+  secret:
+    createSecret: true
+
+repoServer:
+  env:
+    - name: ARGOCD_EXEC_TIMEOUT
+      value: "180s"
+
+controller:
+  metrics:
+    enabled: true
+
+dex:
+  enabled: false
+

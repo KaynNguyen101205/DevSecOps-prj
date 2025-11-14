@@ -1,0 +1,129 @@
+{% set kubeconfig_b64 = lookup('file', kubeconfig_path, errors='ignore') | default('', true) | b64encode %}
+controller:
+  image: "{{ jenkins_controller_image }}"
+  tag: ""
+  serviceType: NodePort
+  nodePort: {{ jenkins_node_port }}
+  installPlugins:
+{% for plugin in jenkins_extra_plugins %}
+    - "{{ plugin }}"
+{% endfor %}
+  admin:
+    username: "{{ jenkins_admin_user }}"
+    password: "{{ jenkins_admin_password }}"
+  JCasC:
+    configScripts:
+      00-system-message: |
+        jenkins:
+          systemMessage: |
+            Jenkins is managed as code. Please do not change settings by hand.
+      01-security: |
+        jenkins:
+          securityRealm:
+            local:
+              allowsSignup: false
+              users:
+                - id: "{{ jenkins_admin_user }}"
+                  password: "{{ jenkins_admin_password }}"
+          authorizationStrategy:
+            globalMatrix:
+              permissions:
+                - "USER:Overall/Administer:{{ jenkins_admin_user }}"
+                - "GROUP:Overall/Read:authenticated"
+          disableRememberMe: true
+      02-agent: |
+        jenkins:
+          clouds:
+            - kubernetes:
+                name: "kind"
+                serverUrl: "https://kubernetes.default.svc"
+                namespace: "{{ devsecops_namespace_ci }}"
+                jenkinsUrl: "http://{{ jenkins_release_name }}:8080"
+                retentionTimeout: 5
+                templates:
+                  - name: "default"
+                    label: "dynamic-agent"
+                    containers:
+                      - name: "jnlp"
+                        image: "{{ jenkins_agent_image }}"
+                        alwaysPullImage: false
+                        workingDir: "/home/jenkins"
+                        resourceRequestCpu: "250m"
+                        resourceRequestMemory: "256Mi"
+                        resourceLimitCpu: "1000m"
+                        resourceLimitMemory: "1Gi"
+    completeSecret: true
+      03-credentials: |
+        credentials:
+          system:
+            domainCredentials:
+              - credentials:
+                  - usernamePassword:
+                      description: "Local registry login"
+                      id: "registry-creds"
+                      scope: GLOBAL
+                      username: "{{ registry_username }}"
+                      password: "{{ registry_password }}"
+                  - string:
+                      description: "SonarQube token"
+                      id: "sonarqube-token"
+                      scope: GLOBAL
+                      secret: "{{ sonarqube_token }}"
+                  - string:
+                      description: "Ansible Vault password"
+                      id: "ansible-vault-password"
+                      scope: GLOBAL
+                      secret: "{{ ansible_vault_password }}"
+{% if kubeconfig_b64 %}
+                  - file:
+                      description: "Kind kubeconfig"
+                      fileName: "kubeconfig"
+                      id: "kubeconfig-local"
+                      scope: GLOBAL
+                      secretBytes: "{{ kubeconfig_b64 }}"
+{% endif %}
+      04-sonarqube: |
+        unclassified:
+          sonarGlobalConfiguration:
+            installations:
+              - name: "sonarqube"
+                serverUrl: "{{ sonarqube_service_url }}"
+                serverAuthenticationToken: "sonarqube-token"
+      05-tools: |
+        tool:
+          dependencyCheck:
+            installations:
+              - name: "DP-Check"
+                properties:
+                  - installSource:
+                      installers:
+                        - dependencyCheckInstaller:
+                            id: "latest"
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "1500m"
+      memory: "3Gi"
+  podAnnotations:
+    "seccomp.security.alpha.kubernetes.io/pod": "runtime/default"
+
+agent:
+  enabled: false
+
+persistence:
+  enabled: true
+  size: 8Gi
+
+networkPolicy:
+  enabled: true
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: "{{ devsecops_namespace_ci }}"
+      ports:
+        - protocol: TCP
+          port: 443
+

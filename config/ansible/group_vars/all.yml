@@ -1,0 +1,32 @@
+---
+kubeconfig_path: "{{ lookup('env', 'KUBECONFIG') | default(playbook_dir + '/../infra/terraform/kubeconfig', true) }}"
+kube_context: "{{ cluster_context | default('devsecops-cluster') }}"
+
+devsecops_namespace_ci: "devsecops-ci"
+devsecops_namespace_quality: "devsecops-quality"
+devsecops_namespace_monitor: "devsecops-monitor"
+
+jenkins_admin_user: "{{ vault_jenkins_admin_user }}"
+jenkins_admin_password: "{{ vault_jenkins_admin_password }}"
+
+registry_hostname: "{{ vault_registry_hostname | default('localhost:5001') }}"
+registry_username: "{{ vault_registry_username }}"
+registry_password: "{{ vault_registry_password }}"
+
+sonarqube_admin_user: "{{ vault_sonarqube_admin_user | default('admin') }}"
+sonarqube_admin_password: "{{ vault_sonarqube_admin_password }}"
+sonarqube_db_user: "{{ vault_sonarqube_db_user | default('sonar') }}"
+sonarqube_db_password: "{{ vault_sonarqube_db_password }}"
+sonarqube_release_name: "{{ vault_sonarqube_release_name | default('sonarqube') }}"
+sonarqube_service_url: "http://{{ sonarqube_release_name }}.{{ devsecops_namespace_quality }}.svc:9000"
+sonarqube_token: "{{ vault_sonarqube_token | default('') }}"
+grafana_admin_user: "{{ vault_grafana_admin_user | default('admin') }}"
+grafana_admin_password: "{{ vault_grafana_admin_password }}"
+
+trivy_cache_dir: "{{ lookup('env', 'TRIVY_CACHE_DIR') | default(ansible_env.HOME + '/.cache/trivy', true) }}"
+
+kind_version: "v0.23.0"
+kubectl_version: "v1.29.4"
+helm_version: "v3.16.1"
+ansible_vault_password: "{{ vault_ansible_vault_password | default('') }}"
+

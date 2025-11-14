@@ -1,3 +1,5 @@
 # ignore pdf document
 DevSecOps_Project_Docker_Jenkins_SonarQube_K8s_1753408365.pdf
 
+# ignore generated docs directory
+docs/

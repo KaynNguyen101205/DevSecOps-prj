@@ -1,0 +1,17 @@
+---
+jenkins_release_name: "jenkins"
+jenkins_chart_version: ""
+jenkins_node_port: 32080
+jenkins_tools_namespace: "{{ devsecops_namespace_ci }}"
+jenkins_agent_image: "jenkins/inbound-agent:3197.v02b_924d45f9e-3"
+jenkins_controller_image: "jenkins/jenkins:lts-jdk17"
+jenkins_extra_plugins:
+  - "kubernetes:4213.vb_29e388b_7080"
+  - "git:5.2.1"
+  - "workflow-aggregator:596.v8c21c963d92d"
+  - "configuration-as-code:1810.v9b_c30a_249a_4c"
+  - "blueocean:1.27.5"
+  - "docker-workflow:580.vc0c340686a_0b"
+  - "sonar:2.17.1"
+  - "dependency-check-jenkins-plugin:5.5.1"
+

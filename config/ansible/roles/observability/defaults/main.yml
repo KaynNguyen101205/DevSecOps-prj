@@ -1,0 +1,10 @@
+---
+observability_namespace: "{{ devsecops_namespace_monitor }}"
+prometheus_release_name: "kube-prometheus-stack"
+prometheus_chart_version: ""
+grafana_node_port: 30300
+alertmanager_node_port: 30903
+loki_release_name: "loki-stack"
+loki_chart_version: ""
+loki_storage_size: "10Gi"
+

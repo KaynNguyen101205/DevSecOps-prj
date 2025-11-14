@@ -1,0 +1,54 @@
+- name: Ensure ArgoCD namespace exists
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ argocd_namespace }}"
+        labels:
+          pod-security.kubernetes.io/enforce: baseline
+  kubeconfig: "{{ kubeconfig_path }}"
+  tags: ["argocd"]
+
+- name: Add ArgoCD Helm repository
+  kubernetes.core.helm_repository:
+    name: argo
+    repo_url: https://argoproj.github.io/argo-helm
+  environment: "{{ helm_environment | default({}) }}"
+  tags: ["argocd"]
+
+- name: Deploy ArgoCD via Helm
+  kubernetes.core.helm:
+    name: "{{ argocd_release_name }}"
+    chart_ref: argo/argo-cd
+    release_namespace: "{{ argocd_namespace }}"
+    create_namespace: false
+    kubeconfig: "{{ kubeconfig_path }}"
+    values: "{{ lookup('template', 'values.yaml.j2') | from_yaml }}"
+    wait: true
+    timeout: 600
+    version: "{{ argocd_chart_version | default(omit) }}"
+  environment: "{{ helm_environment | default({}) }}"
+  tags: ["argocd"]
+
+- name: Wait for ArgoCD server to be ready
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Service
+    name: "{{ argocd_release_name }}-server"
+    namespace: "{{ argocd_namespace }}"
+  kubeconfig: "{{ kubeconfig_path }}"
+  register: argocd_service
+  until: argocd_service.resources | length > 0
+  retries: 10
+  delay: 12
+  tags: ["argocd"]
+
+- name: Create ArgoCD application for Netflix app
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'application-netflix.yaml.j2') | from_yaml }}"
+  kubeconfig: "{{ kubeconfig_path }}"
+  tags: ["argocd"]
+

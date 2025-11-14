@@ -1,0 +1,13 @@
+---
+argocd_namespace: "argocd"
+argocd_release_name: "argocd"
+argocd_chart_version: ""
+argocd_server_node_port: 30080
+
+gitops_repo_url: "{{ vault_gitops_repo_url | default('https://github.com/your-org/devsecops-netflix.git') }}"
+gitops_repo_revision: "{{ vault_gitops_repo_revision | default('main') }}"
+gitops_app_path: "{{ vault_gitops_app_path | default('gitops/netflix') }}"
+gitops_app_name: "netflix-app"
+gitops_destination_namespace: "netflix"
+gitops_sync_policy: "automated"
+

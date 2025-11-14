@@ -1,0 +1,184 @@
+- name: Ensure docker service is running
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+  tags: ["container", "docker"]
+
+- name: Apply container friendly sysctl values
+  ansible.builtin.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    sysctl_set: true
+    reload: true
+  loop: "{{ container_runtime_sysctl }}"
+  tags: ["container", "sysctl"]
+
+- name: Install helper packages for repositories
+  ansible.builtin.apt:
+    name: "{{ container_runtime_prereq_packages }}"
+    state: present
+    update_cache: true
+  when: ansible_os_family | lower == "debian"
+  tags: ["container", "packages"]
+
+- name: Add Trivy apt gpg key
+  ansible.builtin.get_url:
+    url: https://aquasecurity.github.io/trivy-repo/deb/public.key
+    dest: /usr/share/keyrings/trivy-archive-keyring.gpg
+    mode: "0644"
+  register: trivy_key
+  when: ansible_os_family | lower == "debian"
+  tags: ["container", "trivy"]
+
+- name: Configure Trivy apt repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/trivy.list
+    content: "deb [signed-by=/usr/share/keyrings/trivy-archive-keyring.gpg] https://aquasecurity.github.io/trivy-repo/deb stable main\n"
+    owner: root
+    group: root
+    mode: "0644"
+  register: trivy_repo
+  when: ansible_os_family | lower == "debian"
+  tags: ["container", "trivy"]
+
+- name: Install Trivy scanner
+  ansible.builtin.apt:
+    name: trivy
+    state: present
+    update_cache: "{{ trivy_key.changed or trivy_repo.changed }}"
+  when: ansible_os_family | lower == "debian"
+  tags: ["container", "trivy"]
+
+- name: Install ansible-core package
+  ansible.builtin.apt:
+    name: ansible-core
+    state: present
+  when: ansible_os_family | lower == "debian"
+  tags: ["container", "ansible"]
+
+- name: Download Terraform archive
+  ansible.builtin.get_url:
+    url: "https://releases.hashicorp.com/terraform/{{ terraform_version }}/terraform_{{ terraform_version }}_linux_amd64.zip"
+    dest: "/tmp/terraform_{{ terraform_version }}_linux_amd64.zip"
+    mode: "0644"
+  register: terraform_archive
+  tags: ["container", "terraform"]
+
+- name: Install Terraform binary
+  ansible.builtin.unarchive:
+    src: "/tmp/terraform_{{ terraform_version }}_linux_amd64.zip"
+    dest: /usr/local/bin
+    remote_src: true
+    mode: "0755"
+  when: terraform_archive.changed
+  tags: ["container", "terraform"]
+
+- name: Download Conftest archive
+  ansible.builtin.get_url:
+    url: "https://github.com/open-policy-agent/conftest/releases/download/v{{ conftest_version }}/conftest_{{ conftest_version }}_Linux_x86_64.tar.gz"
+    dest: "/tmp/conftest_{{ conftest_version }}.tar.gz"
+    mode: "0644"
+  register: conftest_archive
+  tags: ["container", "conftest"]
+
+- name: Install Conftest binary
+  ansible.builtin.unarchive:
+    src: "/tmp/conftest_{{ conftest_version }}.tar.gz"
+    dest: /usr/local/bin
+    remote_src: true
+    mode: "0755"
+  when: conftest_archive.changed
+  tags: ["container", "conftest"]
+
+- name: Download Sonar Scanner archive
+  ansible.builtin.get_url:
+    url: "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-{{ sonar_scanner_version }}-linux.zip"
+    dest: "/tmp/sonar-scanner-cli-{{ sonar_scanner_version }}-linux.zip"
+    mode: "0644"
+  register: sonar_archive
+  tags: ["container", "sonar"]
+
+- name: Install Sonar Scanner
+  ansible.builtin.unarchive:
+    src: "/tmp/sonar-scanner-cli-{{ sonar_scanner_version }}-linux.zip"
+    dest: /opt
+    remote_src: true
+  when: sonar_archive.changed
+  tags: ["container", "sonar"]
+
+- name: Symlink Sonar Scanner binary
+  ansible.builtin.file:
+    src: "/opt/sonar-scanner-{{ sonar_scanner_version }}-linux/bin/sonar-scanner"
+    dest: /usr/local/bin/sonar-scanner
+    state: link
+  tags: ["container", "sonar"]
+
+- name: Create Trivy cache directory
+  ansible.builtin.file:
+    path: "{{ trivy_cache_dir }}"
+    state: directory
+    owner: "{{ ansible_user_id }}"
+    group: "{{ ansible_user_id }}"
+    mode: "0750"
+  tags: ["container", "trivy"]
+
+- name: Install kind CLI
+  ansible.builtin.get_url:
+    url: "https://github.com/kubernetes-sigs/kind/releases/download/{{ kind_version }}/kind-linux-amd64"
+    dest: /usr/local/bin/kind
+    mode: "0755"
+  tags: ["container", "kind"]
+
+- name: Install kubectl CLI
+  ansible.builtin.get_url:
+    url: "https://dl.k8s.io/release/{{ kubectl_version }}/bin/linux/amd64/kubectl"
+    dest: /usr/local/bin/kubectl
+    mode: "0755"
+  tags: ["container", "kubectl"]
+
+- name: Download Helm archive
+  ansible.builtin.get_url:
+    url: "https://get.helm.sh/helm-{{ helm_version }}-linux-amd64.tar.gz"
+    dest: /tmp/helm-linux-amd64.tar.gz
+    mode: "0644"
+  register: helm_archive
+  tags: ["container", "helm"]
+
+- name: Extract Helm binary
+  ansible.builtin.unarchive:
+    src: /tmp/helm-linux-amd64.tar.gz
+    dest: /tmp
+    remote_src: true
+  when: helm_archive.changed
+  tags: ["container", "helm"]
+
+- name: Install Helm CLI
+  ansible.builtin.copy:
+    src: /tmp/linux-amd64/helm
+    dest: /usr/local/bin/helm
+    mode: "0755"
+  when: helm_archive.changed
+  tags: ["container", "helm"]
+
+- name: Clean Helm temporary files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /tmp/linux-amd64
+    - /tmp/helm-linux-amd64.tar.gz
+  when: helm_archive.changed
+  tags: ["container", "helm"]
+
+- name: Remove downloaded archives
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "/tmp/terraform_{{ terraform_version }}_linux_amd64.zip"
+    - "/tmp/conftest_{{ conftest_version }}.tar.gz"
+    - "/tmp/sonar-scanner-cli-{{ sonar_scanner_version }}-linux.zip"
+  tags: ["container", "cleanup"]
+

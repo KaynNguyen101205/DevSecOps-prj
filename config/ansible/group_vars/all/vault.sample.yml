@@ -1,0 +1,21 @@
+---
+vault_jenkins_admin_user: "admin"
+vault_jenkins_admin_password: "ChangeMeNow!"
+
+vault_registry_hostname: "localhost:5001"
+vault_registry_username: "registryuser"
+vault_registry_password: "changeMe123!"
+
+vault_sonarqube_admin_user: "admin"
+vault_sonarqube_admin_password: "ChangeMeNow!"
+vault_sonarqube_db_user: "sonar"
+vault_sonarqube_db_password: "DbChangeMe123!"
+vault_sonarqube_release_name: "sonarqube"
+vault_sonarqube_token: "sample-generated-token"
+vault_ansible_vault_password: "SampleVaultPass123!"
+vault_grafana_admin_user: "admin"
+vault_grafana_admin_password: "GrafanaChangeMe!"
+vault_gitops_repo_url: "https://github.com/your-org/devsecops-netflix.git"
+vault_gitops_repo_revision: "main"
+vault_gitops_app_path: "gitops/netflix"
+

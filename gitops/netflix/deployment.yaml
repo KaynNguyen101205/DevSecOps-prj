@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netflix
+  labels:
+    app: netflix
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: netflix
+  template:
+    metadata:
+      labels:
+        app: netflix
+    spec:
+      containers:
+        - name: netflix
+          image: localhost:5001/devsecops/netflix:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          env:
+            - name: TMDB_V3_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: tmdb-api
+                  key: TMDB_V3_API_KEY
+

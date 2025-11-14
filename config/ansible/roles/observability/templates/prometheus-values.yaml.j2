@@ -1,0 +1,51 @@
+grafana:
+  adminUser: "{{ grafana_admin_user }}"
+  adminPassword: "{{ grafana_admin_password }}"
+  service:
+    type: NodePort
+    nodePort: {{ grafana_node_port }}
+  grafana.ini:
+    server:
+      root_url: "%(protocol)s://%(domain)s/"
+    security:
+      allow_embedding: false
+      cookie_secure: true
+    auth.anonymous:
+      enabled: false
+  persistence:
+    enabled: true
+    size: 10Gi
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      url: http://{{ loki_release_name }}.{{ observability_namespace }}.svc:3100
+      access: proxy
+      jsonData:
+        maxLines: 5000
+
+alertmanager:
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+  service:
+    type: NodePort
+    nodePort: {{ alertmanager_node_port }}
+
+prometheus:
+  prometheusSpec:
+    retention: 5d
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 20Gi
+

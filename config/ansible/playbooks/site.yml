@@ -1,0 +1,38 @@
+---
+- name: Bootstrap DevSecOps stack on local host
+  hosts: localhost
+  become: true
+  vars:
+    kubectl_env:
+      KUBECONFIG: "{{ kubeconfig_path }}"
+  collections:
+    - kubernetes.core
+    - community.general
+
+  pre_tasks:
+    - name: Make sure kubeconfig file exists
+      ansible.builtin.stat:
+        path: "{{ kubeconfig_path }}"
+      register: kubeconfig_stat
+
+    - name: Fail when kubeconfig is missing
+      ansible.builtin.fail:
+        msg: "Kubeconfig not found at {{ kubeconfig_path }}. Run terraform apply first."
+      when: not kubeconfig_stat.stat.exists
+
+  roles:
+    - role: hardening
+    - role: container_runtime
+    - role: jenkins
+      vars:
+        helm_environment: "{{ kubectl_env }}"
+    - role: sonarqube
+      vars:
+        helm_environment: "{{ kubectl_env }}"
+    - role: observability
+      vars:
+        helm_environment: "{{ kubectl_env }}"
+    - role: argocd
+      vars:
+        helm_environment: "{{ kubectl_env }}"
+

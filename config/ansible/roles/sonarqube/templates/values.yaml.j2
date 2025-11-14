@@ -1,0 +1,40 @@
+sonarqubeUsername: "{{ sonarqube_admin_user }}"
+sonarqubePassword: "{{ sonarqube_admin_password }}"
+image:
+  tag: "{{ sonarqube_image_tag }}"
+
+service:
+  type: NodePort
+  nodePort: {{ sonarqube_service_node_port }}
+  port: 9000
+
+persistence:
+  enabled: true
+  size: 10Gi
+
+resources:
+  requests:
+    cpu: "500m"
+    memory: "2Gi"
+  limits:
+    cpu: "1500m"
+    memory: "4Gi"
+
+sonarqubeSettings:
+  sonar.forceAuthentication: "true"
+
+postgresql:
+  enabled: {{ sonarqube_postgresql_enabled | lower }}
+  auth:
+    username: "{{ sonarqube_db_user }}"
+    password: "{{ sonarqube_db_password }}"
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+
+securityContext:
+  fsGroup: 2000
+  runAsUser: 1000
+  runAsGroup: 1000
+

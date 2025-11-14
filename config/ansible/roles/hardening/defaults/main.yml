@@ -1,0 +1,8 @@
+---
+hardening_allowed_ports:
+  - { port: "22", proto: "tcp" }
+  - { port: "8080", proto: "tcp" }
+  - { port: "9000", proto: "tcp" }
+  - { port: "3000", proto: "tcp" }
+  - { port: "30007", proto: "tcp" }
+

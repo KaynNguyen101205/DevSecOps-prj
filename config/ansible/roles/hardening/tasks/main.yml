@@ -1,0 +1,76 @@
+- name: Update apt cache on Debian family
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_os_family | lower == "debian"
+  tags: ["hardening"]
+
+- name: Install baseline security packages
+  ansible.builtin.apt:
+    name:
+      - ufw
+      - auditd
+      - fail2ban
+      - unattended-upgrades
+    state: present
+  when: ansible_os_family | lower == "debian"
+  tags: ["hardening"]
+
+- name: Enable unattended upgrades
+  ansible.builtin.command: "dpkg-reconfigure --frontend=noninteractive unattended-upgrades"
+  when:
+    - ansible_os_family | lower == "debian"
+  changed_when: false
+  tags: ["hardening"]
+
+- name: Configure ufw default policies
+  community.general.ufw:
+    state: enabled
+    policy: deny
+    direction: incoming
+  when: ansible_os_family | lower == "debian"
+  tags: ["hardening"]
+
+- name: Allow baseline outbound traffic
+  community.general.ufw:
+    rule: allow
+    direction: outgoing
+  when: ansible_os_family | lower == "debian"
+  tags: ["hardening"]
+
+- name: Allow required service ports
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.port }}"
+    proto: "{{ item.proto }}"
+  loop: "{{ hardening_allowed_ports }}"
+  when: ansible_os_family | lower == "debian"
+  tags: ["hardening"]
+
+- name: Drop unsupported ufw traffic
+  community.general.ufw:
+    rule: deny
+    from_ip: "0.0.0.0/0"
+    port: "0:65535"
+  when: ansible_os_family | lower == "debian"
+  tags: ["hardening"]
+
+- name: Ensure auditd service is running
+  ansible.builtin.service:
+    name: auditd
+    state: started
+    enabled: true
+  when: ansible_os_family | lower == "debian"
+  tags: ["hardening"]
+
+- name: Deploy Docker daemon baseline config
+  ansible.builtin.template:
+    src: docker-daemon.json.j2
+    dest: /etc/docker/daemon.json
+    owner: root
+    group: root
+    mode: "0640"
+  notify:
+    - Restart docker
+  tags: ["hardening"]
+

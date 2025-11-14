@@ -1,0 +1,8 @@
+---
+sonarqube_release_name: "sonarqube"
+sonarqube_chart_version: ""
+sonarqube_service_node_port: 30900
+sonarqube_namespace: "{{ devsecops_namespace_quality }}"
+sonarqube_image_tag: "10.4-community"
+sonarqube_postgresql_enabled: true
+

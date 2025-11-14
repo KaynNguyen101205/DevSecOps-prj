@@ -1,0 +1,23 @@
+loki:
+  auth_enabled: false
+  persistence:
+    enabled: true
+    size: "{{ loki_storage_size }}"
+
+gateway:
+  enabled: true
+  service:
+    type: ClusterIP
+
+promtail:
+  enabled: true
+  config:
+    snippets:
+      pipelineStages:
+        - docker: {}
+        - match:
+            selector: '{job="jenkins"}'
+            stages:
+              - labeldrop:
+                  - pod_template_hash
+

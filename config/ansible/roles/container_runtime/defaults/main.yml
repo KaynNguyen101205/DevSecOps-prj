@@ -1,0 +1,19 @@
+---
+container_runtime_sysctl:
+  - { name: "net.ipv4.ip_forward", value: 1 }
+  - { name: "net.ipv4.conf.all.rp_filter", value: 1 }
+  - { name: "net.ipv4.conf.default.rp_filter", value: 1 }
+  - { name: "net.ipv4.conf.all.accept_redirects", value: 0 }
+  - { name: "net.ipv4.conf.default.accept_redirects", value: 0 }
+
+container_runtime_prereq_packages:
+  - apt-transport-https
+  - ca-certificates
+  - gnupg
+  - lsb-release
+  - software-properties-common
+
+terraform_version: "1.8.5"
+conftest_version: "0.56.0"
+sonar_scanner_version: "5.0.1.3006"
+
